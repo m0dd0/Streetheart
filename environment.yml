@@ -1,0 +1,10 @@
+name: /home/moritz/Documents/streetheart/venv
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - pandas
+  - osmnx
+  - black
+prefix: /home/moritz/Documents/streetheart/venv
