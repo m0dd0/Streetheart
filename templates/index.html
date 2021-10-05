@@ -2,7 +2,9 @@
 <html>
   <head>
     <title>Streetheart</title>
+
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <link
       rel="stylesheet"
@@ -16,11 +18,9 @@
       crossorigin=""
     ></script>
   </head>
-
   <body>
     <input type="button" value="search" onclick="search()" />
-    <div id="mapid" style="width: 800px; height: 600px"></div>
-
+    <div id="mapid" style="width: 1200x; height: 800px"></div>
     <script>
       var mymap = L.map("mapid").setView([51.505, -0.09], 13);
 
@@ -37,11 +37,20 @@
         }
       ).addTo(mymap);
 
-      function search(){
-        let response = await fetch('/search',{method:'POST', headers: {
-          'Content-Type': 'application/json;charset=utf-8'
-        },
-      body: "[1]"})
+      function search() {
+        mapBounds = mymap.getBounds();
+        let response = fetch("/search", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json;charset=utf-8",
+          },
+          body: JSON.stringify([
+            mapBounds.getSouth(),
+            mapBounds.getWest(),
+            mapBounds.getNorth(),
+            mapBounds.getEast(),
+          ]),
+        });
       }
     </script>
   </body>
