@@ -79,12 +79,20 @@ poly = sply_affinity.translate(
     poly, xoff=points.bounds[0] - poly.bounds[0], yoff=points.bounds[3] - poly.bounds[3]
 )
 
-ax.plot(*poly.exterior.xy, color="red")
+BUFFER_FACTOR = 0.1
+poly_extents = get_extents(poly)
+diagonal_length = (poly_extents[0] ** 2 + poly_extents[1] ** 2) ** 0.5
+buffer_value = 0.5 * BUFFER_FACTOR * diagonal_length
+poly_outer = poly.buffer(buffer_value)
+poly_inner = poly.buffer(-buffer_value)
 
-poly_prep = sply_prepared.prep(poly)
+poly_middle = poly_inner.symmetric_difference(poly_outer)
 
-contained_points = [(p.x, p.y) for p in filter(poly_prep.contains, points)]
-# print(contained_points[0])
+poly_middle_prep = sply_prepared.prep(poly_middle)
+contained_points = [(p.x, p.y) for p in filter(poly_middle_prep.contains, points)]
+
+ax.plot(*poly_outer.exterior.xy, color="red")
+ax.plot(*poly_inner.exterior.xy, color="red")
 ax.scatter(*zip(*contained_points), color="green")
 
 plt.show()
