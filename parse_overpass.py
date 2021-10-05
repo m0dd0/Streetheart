@@ -7,13 +7,16 @@ from shapely import geometry as sply_geometry
 from shapely import affinity as sply_affinity
 from shapely import prepared as sply_prepared
 import logging
-import numpy as np
 
-# logging.set_logg
+
+# setup logger
+# TODO
+
 
 # load the data
 with open(Path(__file__).parent / "overpass_sample_data.json", "r") as f:
     data = json.load(f)
+
 
 # sort elemts by type and map their attributes to their id
 nodes = {}
@@ -22,6 +25,7 @@ for elem in data["elements"]:
     elem_id = elem.pop("id")
     elem_type = elem.pop("type")
     {"node": nodes, "way": ways}[elem_type][elem_id] = elem
+
 
 # create graph which conatins all the data
 g = nx.Graph()
@@ -44,28 +48,33 @@ for start_node_id, end_node_id in g.edges:
         ]
     )
 
+
 # plot the list of coordinates representing all edges
 fig, ax = plt.subplots()
 ax.add_collection(mpl.collections.LineCollection(lines))
 ax.autoscale()
 ax.axis("equal")
-# plt.show()
-
-
-def get_extents(o):
-    return (o.bounds[2] - o.bounds[0], o.bounds[3] - o.bounds[1])
 
 
 # get all points
 points = [[n_attrs["lon"], n_attrs["lat"]] for _, n_attrs in g.nodes(data=True)]
-# points = np.array(points)
 points = sply_geometry.MultiPoint(points)
-points_extents = get_extents(points)
 
+
+# create the polygon to match
 poly = sply_geometry.Polygon([(1, 1), (2, 3), (3, 1)])
+
+
+# helper functions to get the x,y-extents og an geometry object
+def get_extents(o):
+    return (o.bounds[2] - o.bounds[0], o.bounds[3] - o.bounds[1])
+
+
+# scale and translate the polygon to fir in the upper left corner of the point set
+SIZE_FACTOR = 0.3
+points_extents = get_extents(points)
 poly_extents = get_extents(poly)
 
-SIZE_FACTOR = 0.3
 if (points_extents[0] / points_extents[1]) < (poly_extents[0] / poly_extents[1]):
     scaling_axis = 0
 else:
@@ -79,20 +88,49 @@ poly = sply_affinity.translate(
     poly, xoff=points.bounds[0] - poly.bounds[0], yoff=points.bounds[3] - poly.bounds[3]
 )
 
-BUFFER_FACTOR = 0.1
+
+# create the polygon to match with tolerance
+MATCH_TOLERANCE = 0.05
 poly_extents = get_extents(poly)
 diagonal_length = (poly_extents[0] ** 2 + poly_extents[1] ** 2) ** 0.5
-buffer_value = 0.5 * BUFFER_FACTOR * diagonal_length
+buffer_value = MATCH_TOLERANCE * diagonal_length
 poly_outer = poly.buffer(buffer_value)
 poly_inner = poly.buffer(-buffer_value)
+poly_tolerance = poly_inner.symmetric_difference(poly_outer)
 
-poly_middle = poly_inner.symmetric_difference(poly_outer)
 
-poly_middle_prep = sply_prepared.prep(poly_middle)
-contained_points = [(p.x, p.y) for p in filter(poly_middle_prep.contains, points)]
+DELTA_X_FACTOR = 0.1
+DELTA_Y_FACTOR = 0.1
+DELTA_ROTATE = 5
 
+x_delta = poly_extents[0] * DELTA_X_FACTOR
+y_delta = poly_extents[1] * DELTA_Y_FACTOR
+rotate_delta = DELTA_ROTATE
+while poly_tolerance.bounds[1] > points.bounds[1]:
+    x_off_acc = 0
+    while poly_tolerance.bounds[2] < points.bounds[2]:
+        poly_tolerance = sply_affinity.translate(poly_tolerance, xoff=x_delta)
+        x_off_acc += x_delta
+        # TODO rotate
+        poly_tolerance_prep = sply_prepared.prep(poly_tolerance)
+    poly_tolerance = sply_affinity.translate(
+        poly_tolerance, yoff=y_delta, xoff=-x_off_acc
+    )
+# x_steps = list(range(0, point_extents[0], poly_extents[0] * DELTA_X_FACTOR))
+# y_steps = list(range(0, point_extents[1], poly_extents[1] * DELTA_Y_FACTOR))
+# rotate_steps = list(range(0, 359, DELTA_ROTATE))
+# for x_off in x_steps:
+#     for y_off in y_steps:
+#         for phi in rotate_steps:
+#             pass
+
+# get the contained points in the tolerance area
+contained_points = [(p.x, p.y) for p in filter(poly_tolerance_prep.contains, points)]
+
+
+# plot it
 ax.plot(*poly_outer.exterior.xy, color="red")
 ax.plot(*poly_inner.exterior.xy, color="red")
 ax.scatter(*zip(*contained_points), color="green")
-
+ax.scatter(*zip(*[(p.x, p.y) for p in points]), color="green")
 plt.show()
