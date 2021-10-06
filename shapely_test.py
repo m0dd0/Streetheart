@@ -18,25 +18,25 @@ def get_extents(o):
 
 line = sply_geometry.LineString([(0, 0), (1, 1), (0, 2), (2, 2), (3, 1), (1, 0)])
 
-ring = sply_geometry.Point(0, 0).buffer(10)
+circle = sply_geometry.Point(0, 0).buffer(10)
 
-buff_outer = ring.buffer(1)
-buff_inner = ring.buffer(-1)
+outer_circle = circle.buffer(1)
+inner_circle = circle.buffer(-1)
 
-# print(buff_inner.contains(sply_geometry.Point(0, 0)))
-# print(buff_inner.contains(sply_geometry.Point(10, 0)))
-# print(buff_outer.contains(sply_geometry.Point(10, 0)))
-# print(buff_outer.contains(sply_geometry.Point(0, 0)))
-# print(buff_outer.contains(sply_geometry.Point(10.5, 0)))
-# print(buff_outer.contains(sply_geometry.Point(12, 0)))
+ring = inner_circle.symmetric_difference(outer_circle)
+# print(poly.contains(sply_geometry.Point(0, 0)))
+# print(poly.contains(sply_geometry.Point(10, 0)))
+# print(poly.contains(sply_geometry.Point(10.5, 0)))
+# print(poly.contains(sply_geometry.Point(9.5, 0)))
+# print(poly.contains(sply_geometry.Point(12, 0)))
 
+# print(len(ring.boundary.geoms))
+boundary_1 = ring.boundary.geoms[0]
+boundary_2 = ring.boundary.geoms[1]
 
-poly = buff_inner.symmetric_difference(buff_outer)
-print(poly.contains(sply_geometry.Point(0, 0)))
-print(poly.contains(sply_geometry.Point(10, 0)))
-print(poly.contains(sply_geometry.Point(10.5, 0)))
-print(poly.contains(sply_geometry.Point(9.5, 0)))
-print(poly.contains(sply_geometry.Point(12, 0)))
+# ring_prep = sply_prepared.prep(ring)
+# ring_prep = sply_affinity.translate(ring_prep, xoff=1)
+
 
 # fig, ax = plt.subplots()
 # ax.plot(*buff_outer.exterior.xy)

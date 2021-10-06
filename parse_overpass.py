@@ -7,7 +7,7 @@ from shapely import geometry as sply_geometry
 from shapely import affinity as sply_affinity
 from shapely import prepared as sply_prepared
 import logging
-
+import time
 
 # setup logger
 # TODO
@@ -50,6 +50,7 @@ for start_node_id, end_node_id in g.edges:
 
 
 # plot the list of coordinates representing all edges
+plt.ion()
 fig, ax = plt.subplots()
 ax.add_collection(mpl.collections.LineCollection(lines))
 ax.autoscale()
@@ -106,15 +107,43 @@ DELTA_ROTATE = 5
 x_delta = poly_extents[0] * DELTA_X_FACTOR
 y_delta = poly_extents[1] * DELTA_Y_FACTOR
 rotate_delta = DELTA_ROTATE
+
+# b1 = ax.plot(*poly_tolerance.boundary.geoms[0].xy, color="red")[0]
+# b2 = ax.plot(*poly_tolerance.boundary.geoms[1].xy, color="red")[0]
+# b1.remove()
+# b2.remove()
+# b1 = ax.plot(*poly_tolerance.boundary.geoms[0].xy, color="green")[0]
+# b2 = ax.plot(*poly_tolerance.boundary.geoms[1].xy, color="green")[0]
+
+
+# 1=miny: as long as miny border of polygon is higher than miny border of poin set
 while poly_tolerance.bounds[1] > points.bounds[1]:
     x_off_acc = 0
+    # 2=maxx: as long as maxx border of polygon is scmaller than maxx border of point set
     while poly_tolerance.bounds[2] < points.bounds[2]:
+        # it is not possible to transform a prepared polygon so it must be rebuid here
+        poly_tolerance_prep = sply_prepared.prep(poly_tolerance)
+        # TODO rotate
+        #### MATCHING
+        # contained_points = [
+        #     (p.x, p.y) for p in filter(poly_tolerance_prep.contains, points)
+        # ]
+        b1 = ax.plot(*poly_tolerance.boundary.geoms[0].xy, color="red")[0]
+        b2 = ax.plot(*poly_tolerance.boundary.geoms[1].xy, color="red")[0]
+
+        # ax.scatter(*zip(*contained_points), color="green")
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        # time.sleep(1)
+        b1.remove()
+        b2.remove()
+
+        # move to the right
         poly_tolerance = sply_affinity.translate(poly_tolerance, xoff=x_delta)
         x_off_acc += x_delta
-        # TODO rotate
-        poly_tolerance_prep = sply_prepared.prep(poly_tolerance)
+    # move down and reset x offset
     poly_tolerance = sply_affinity.translate(
-        poly_tolerance, yoff=y_delta, xoff=-x_off_acc
+        poly_tolerance, yoff=-y_delta, xoff=-x_off_acc
     )
 # x_steps = list(range(0, point_extents[0], poly_extents[0] * DELTA_X_FACTOR))
 # y_steps = list(range(0, point_extents[1], poly_extents[1] * DELTA_Y_FACTOR))
@@ -125,12 +154,11 @@ while poly_tolerance.bounds[1] > points.bounds[1]:
 #             pass
 
 # get the contained points in the tolerance area
-contained_points = [(p.x, p.y) for p in filter(poly_tolerance_prep.contains, points)]
 
 
 # plot it
-ax.plot(*poly_outer.exterior.xy, color="red")
-ax.plot(*poly_inner.exterior.xy, color="red")
-ax.scatter(*zip(*contained_points), color="green")
-ax.scatter(*zip(*[(p.x, p.y) for p in points]), color="green")
-plt.show()
+# ax.plot(*poly_outer.exterior.xy, color="red")
+# ax.plot(*poly_inner.exterior.xy, color="red")
+# ax.scatter(*zip(*contained_points), color="green")
+# ax.scatter(*zip(*[(p.x, p.y) for p in points]), color="green")
+# plt.show()
