@@ -265,7 +265,7 @@ def draw_point_set(point_set, ax):
 
 def resample_nodes(nodes, ways, min_dist, max_dist, dist_func):
     resampled_ways = {}
-    # resampled_nodes = {}
+    resampled_nodes = {}
     for way_id, way_attrs in ways.items():
         way_node_ids = way_attrs.pop("nodes")
         current_node_id = way_node_ids.pop(0)
@@ -291,6 +291,7 @@ def resample_nodes(nodes, ways, min_dist, max_dist, dist_func):
                     current_node_id = next_node_id
                     current_node_pos = next_node_pos
                     break
+        resampled_nodes.add(nodes[n_id] for n_id in resampled_way_node_ids)
         resampled_ways[way_id] = {**way_attrs, **{"nodes": resampled_way_node_ids}}
 
 
