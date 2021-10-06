@@ -143,45 +143,36 @@ def get_dilated_polygon_borders(polygon):
     return (polygon.boundary.geoms[0], polygon.boundary.geoms[1])
 
 
-# def check_bounds(polygon, point_set, axis="maxx"):
-#     if axis == "maxx":
-#         return polygon.bounds[2] < point_set.bounds[2]
-#     elif axis == "miny":
-#         return polygon.bounds[1] > point_set.bounds[1]
-#     else:
-#         raise NotImplementedError("this axis is not implemented")
-
-
 def transformed_polygons(
     polygon,
     point_set,
-    delta_x_factor=0.1,
-    delta_y_factor=0.1,
-    delta_phi=5,
+    delta_x_factor=0.3,
+    delta_y_factor=0.3,
+    delta_phi=10,
 ):
-    # TODO rotate
-
     polygon_extents = get_extents(polygon)
     x_delta = polygon_extents[0] * delta_x_factor
     y_delta = polygon_extents[1] * delta_y_factor
     point_extents = get_extents(point_set)
     x_deltas = np.arange(0, point_extents[0], x_delta)
     y_deltas = np.arange(0, point_extents[1], y_delta)
+    phi_deltas = np.arange(0, 359, delta_phi)
 
-    # polygon_y = sply_geometry.Polygon(polygon)
+    n_transforms = len(x_deltas) * len(y_deltas) * len(phi_deltas)
+    i = 0
     for y_delta in y_deltas:
         for x_delta in x_deltas:
-            yield sply_affinity.translate(polygon, xoff=x_delta, yoff=-y_delta)
-        # polygon_y = sply_affinity.translate(polygon, yoff=-y_delta)
-
-    # if method == "while":
-    #     while check_bounds(polygon, point_set, "miny"):
-    #         x_off_acc = 0
-    #         while check_bounds(polygon, point_set, "maxx"):
-    #             x_off_acc += x_delta
-    #             polygon = sply_affinity.translate(polygon, xoff=x_delta)
-    #             yield polygon
-    #         polygon = sply_affinity.translate(polygon, yoff=-y_delta, xoff=-x_off_acc)
+            for phi_delta in phi_deltas:
+                i += 1
+                progress = i / n_transforms
+                # TODO do transformation stepwise
+                yield (
+                    progress,
+                    sply_affinity.rotate(
+                        sply_affinity.translate(polygon, xoff=x_delta, yoff=-y_delta),
+                        phi_delta,
+                    ),
+                )
 
 
 if __name__ == "__main__":
@@ -201,13 +192,14 @@ if __name__ == "__main__":
     polygon = dilate_polygon_relative(polygon)
     polygon = translate_to_start_position(point_set, polygon)
 
+    plt.ion()
     fig, ax = plt.subplots()
     ax.add_collection(mpl.collections.LineCollection(get_edge_lines(g)))
     ax.autoscale()
     ax.axis("equal")
-    plt.ion()
-    for polygon_transformed in transformed_polygons(polygon, point_set):
-        border_1, border_2 = get_dilated_polygon_borders(polygon)
+    for progress, polygon_transformed in transformed_polygons(polygon, point_set):
+        print(int(progress * 100))
+        border_1, border_2 = get_dilated_polygon_borders(polygon_transformed)
         border_1_mpl = ax.plot(*border_1.xy, color="red")[0]
         border_2_mpl = ax.plot(*border_2.xy, color="red")[0]
 
