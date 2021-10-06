@@ -9,6 +9,7 @@ from shapely import prepared as sply_prepared
 import numpy as np
 import logging
 import time
+import random
 
 
 def nodes_ways_from_osm(osm_json):
@@ -70,7 +71,7 @@ def get_edge_lines(g):
     return lines
 
 
-def get_point_set(g):
+def get_point_set(g, use_multipoint=True):
     """get all points
 
     Args:
@@ -80,7 +81,8 @@ def get_point_set(g):
         [type]: [description]
     """
     points = [[n_attrs["lon"], n_attrs["lat"]] for _, n_attrs in g.nodes(data=True)]
-    points = sply_geometry.MultiPoint(points)
+    if use_multipoint:
+        points = sply_geometry.MultiPoint(points)
     return points
 
 
@@ -143,40 +145,119 @@ def get_dilated_polygon_borders(polygon):
     return (polygon.boundary.geoms[0], polygon.boundary.geoms[1])
 
 
-def transformed_polygons(
+def get_transformed_polygons(
     polygon,
     point_set,
-    delta_x_factor=0.3,
-    delta_y_factor=0.3,
+    delta_x,
+    delta_y,
     delta_phi=10,
 ):
-    polygon_extents = get_extents(polygon)
-    x_delta = polygon_extents[0] * delta_x_factor
-    y_delta = polygon_extents[1] * delta_y_factor
     point_extents = get_extents(point_set)
-    x_deltas = np.arange(0, point_extents[0], x_delta)
-    y_deltas = np.arange(0, point_extents[1], y_delta)
-    phi_deltas = np.arange(0, 359, delta_phi)
+    x_offsets = np.linspace(0, point_extents[0], delta_x)
+    y_offsets = np.linspace(0, point_extents[1], delta_y)
+    phi_offsets = np.linspace(0, 359, delta_phi)
 
-    n_transforms = len(x_deltas) * len(y_deltas) * len(phi_deltas)
+    n = len(x_offsets) * len(y_offsets) * len(phi_offsets)
     i = 0
-    for y_delta in y_deltas:
-        for x_delta in x_deltas:
-            for phi_delta in phi_deltas:
+
+    for y_off in y_offsets:
+        for x_off in x_offsets:
+            for phi_off in phi_offsets:
                 i += 1
-                progress = i / n_transforms
+                progress = i / n
                 # TODO do transformation stepwise
-                yield (
-                    progress,
-                    sply_affinity.rotate(
-                        sply_affinity.translate(polygon, xoff=x_delta, yoff=-y_delta),
-                        phi_delta,
-                    ),
+                transformed_polygon = sply_affinity.rotate(
+                    sply_affinity.translate(polygon, xoff=x_off, yoff=-y_off),
+                    phi_off,
                 )
+                yield progress, transformed_polygon
+
+
+def get_transformed_polygons_with_subsets(
+    polygon, point_set, delta_x, delta_y, delta_phi=10
+):
+    point_extents = get_extents(point_set)
+    x_offsets = np.linspace(0, point_extents[0], delta_x)
+    y_offsets = np.linspace(0, point_extents[1], delta_y)
+    phi_offsets = np.linspace(0, 359, delta_phi)
+
+    n_yields = len(x_offsets) * len(y_offsets) * len(phi_offsets)
+    i = 0
+
+    polygon_extents = get_extents(polygon)
+    grid_size = max(polygon_extents)
+    east_abs = point_set.bounds[2]
+    west_abs = point_set.bounds[0]
+
+    for y_off in y_offsets:
+        # build the subset along the horizontal x-axis
+        north_y = point_set.bounds[3] - y_off
+        south_y = north_y - grid_size
+        filter_rect = sply_geometry.Polygon(
+            [
+                (west_abs, north_y),
+                (east_abs, north_y),
+                (east_abs, south_y),
+                (west_abs, south_y),
+            ]
+        )
+        # filter_rect = sply_prepared.prep(filter_rect)
+        point_subset_x = sply_geometry.MultiPoint(
+            list(filter(filter_rect.contains, point_set))
+        )
+
+        for x_off in x_offsets:
+            # build the grid subset in which the polygon rotates
+            west_x = west_abs + x_off
+            east_x = west_abs + grid_size
+            filter_rect = sply_geometry.Polygon(
+                [
+                    (west_x, north_y),
+                    (east_x, north_y),
+                    (east_x, south_y),
+                    (west_x, south_y),
+                ]
+            )
+            # filter_rect = sply_prepared.prep(filter_rect)
+            point_subset_xy = sply_geometry.MultiPoint(
+                list(filter(filter_rect.contains, point_subset_x))
+            )
+
+            for phi_off in phi_offsets:
+                i += 1
+                progress = i / n_yields
+                # TODO do transforms stepwise
+                transformed_polygon = sply_affinity.rotate(
+                    sply_affinity.translate(polygon, xoff=x_off, yoff=-y_off),
+                    phi_off,
+                )
+                yield progress, point_subset_xy, transformed_polygon
+
+
+def draw_dilated_polygon(polygon, ax):
+    border_1, border_2 = get_dilated_polygon_borders(polygon)
+    border_1_mpl = ax.plot(*border_1.xy, color="red")[0]
+    border_2_mpl = ax.plot(*border_2.xy, color="red")[0]
+
+    return border_1_mpl, border_2_mpl
+
+
+def draw_polygon(polygon, ax):
+    return ax.plot(*polygon.exterior.xy, color="red")
+
+
+def draw_streets(g, ax):
+    ax.add_collection(mpl.collections.LineCollection(get_edge_lines(g)))
+    ax.autoscale()
+    ax.axis("equal")
+
+
+def draw_point_set(point_set, ax):
+    return ax.scatter(*zip(*[(p.x, p.y) for p in point_set]))
 
 
 if __name__ == "__main__":
-    # TODo setup logger
+    # TODO setup logger
 
     # load the data
     with open(Path(__file__).parent / "overpass_sample_data.json", "r") as f:
@@ -192,25 +273,32 @@ if __name__ == "__main__":
     polygon = dilate_polygon_relative(polygon)
     polygon = translate_to_start_position(point_set, polygon)
 
-    plt.ion()
-    fig, ax = plt.subplots()
-    ax.add_collection(mpl.collections.LineCollection(get_edge_lines(g)))
-    ax.autoscale()
-    ax.axis("equal")
-    for progress, polygon_transformed in transformed_polygons(polygon, point_set):
-        print(int(progress * 100))
-        border_1, border_2 = get_dilated_polygon_borders(polygon_transformed)
-        border_1_mpl = ax.plot(*border_1.xy, color="red")[0]
-        border_2_mpl = ax.plot(*border_2.xy, color="red")[0]
+    start = time.perf_counter()
+    transformed_polygons_with_subsets = [
+        (polygon, subset)
+        for _, subset, polygon in get_transformed_polygons_with_subsets(
+            polygon, point_set, 5, 5, 5
+        )
+    ]
+    print(time.perf_counter() - start)
 
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+    start = time.perf_counter()
+    contained_points_sizes = [
+        len(list(filter(p.contains, ss))) for p, ss in transformed_polygons_with_subsets
+    ]
+    print(time.perf_counter() - start)
 
-        border_1_mpl.remove()
-        border_2_mpl.remove()
+    start = time.perf_counter()
+    transformed_polygons = [
+        p for _, p in get_transformed_polygons(polygon, point_set, 5, 5, 5)
+    ]
+    print(time.perf_counter() - start)
 
-#         prepared_polygon = sply_prepared.prep(transformed_polygon)
-#         contained_points = [
-#             (p.x, p.y) for p in filter(prepared_polygon.contains, point_set)
-#         ]
-#         contained_points_mpl = ax.scatter(*zip(*contained_points), color="green")
+    start = time.perf_counter()
+    contained_points_sizes = [
+        len(list(filter(p.contains, point_set))) for p in transformed_polygons
+    ]
+    print(time.perf_counter() - start)
+
+    # fig, ax = plt.subplots()
+    # draw_streets(g, ax)
