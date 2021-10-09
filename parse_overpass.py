@@ -278,6 +278,8 @@ def pos_from_node_id(node_id, nodes):
 
 
 def resample_street_data(nodes, ways, min_dist, max_dist, dist_func="euclidean"):
+    # TODO try shapely interpolate
+
     if dist_func == "euclidean":
         # TODO use numpy
         dist_func = lambda a, b: ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
@@ -370,7 +372,7 @@ def squarify_polygon(polygon, min_quad_size):
 
     # TODO fix wrong bounding box
     cx, cy = polygon.centroid.x, polygon.centroid.y
-    d = max(get_extents(polygon)) * 0.5# + 2
+    d = max(get_extents(polygon)) * 0.5  # + 2
     bounding_square = sply_geometry.Polygon(
         [(cx - d, cy), (cx + d, cy + d), (cx + d, cy - d), (cx - d, cy - d)]
     )
