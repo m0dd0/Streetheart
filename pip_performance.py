@@ -195,8 +195,8 @@ def get_grid_subsets(
             offsets_2 = x_offsets
         else:
             ax_order = ("y", "x")
-            offsets_1 = y_offsets
-            offsets_2 = x_offsets
+            offsets_1 = x_offsets
+            offsets_2 = y_offsets
         profiling["preprocessing"] += time.perf_counter() - start
 
         for off_ax_1 in offsets_1:
@@ -213,8 +213,8 @@ def get_grid_subsets(
                 bounds = (
                     min_x + off_ax_1,
                     min_y,
-                    min_x + off_ax_1,
-                    min_y + shape_size,
+                    min_x + off_ax_1 + shape_size,
+                    max_y,
                 )
             profiling["translation"] += time.perf_counter() - start
 
@@ -242,10 +242,10 @@ def get_grid_subsets(
                     )
                 elif ax_order == ("y", "x"):
                     bounds = (
-                        min_x + off_ax_2,
-                        min_y + off_ax_1,
-                        min_x + off_ax_2 + shape_size,
-                        min_y + off_ax_1 + shape_size,
+                        min_x + off_ax_1,
+                        min_y + off_ax_2,
+                        min_x + off_ax_1 + shape_size,
+                        min_y + off_ax_2 + shape_size,
                     )
                 profiling["translation"] += time.perf_counter() - start
 
@@ -263,8 +263,8 @@ def get_grid_subsets(
 if __name__ == "__main__":
 
     # create point set
-    X_P = 100
-    Y_P = 40
+    X_P = 40
+    Y_P = 100
     N_P = 10_000
     POINTS = np.array([np.random.rand(N_P) * X_P, np.random.rand(N_P) * Y_P]).T
 
