@@ -86,8 +86,7 @@ def get_grid_subsets(
     points,
     n_dx,
     n_dy,
-    x_s,
-    y_s,
+    shape_size,
     use_subgrid=True,
     pir_1="np",
     pir_2="np",
@@ -105,8 +104,8 @@ def get_grid_subsets(
     min_x, min_y = points.min(axis=0)
     max_x, max_y = points.max(axis=0)
 
-    x_offsets = np.linspace(min_x, max_x, n_dx)
-    y_offsets = np.linspace(min_y, max_y, n_dy)
+    x_offsets = np.linspace(min_x, max_x - shape_size, n_dx)
+    y_offsets = np.linspace(min_y, max_y - shape_size, n_dy)
 
     pir_functions = {
         "np": get_pir_np,
@@ -175,8 +174,8 @@ def get_grid_subsets(
                     (
                         min_x + x_off,
                         min_y + y_off,
-                        min_x + x_off + x_s,
-                        min_y + y_off + y_s,
+                        min_x + x_off + shape_size,
+                        min_y + y_off + shape_size,
                     )
                 )
                 profiling["conversion_points"] += time.perf_counter() - start
@@ -192,8 +191,8 @@ def get_grid_subsets(
         start = time.perf_counter()
         if max_x - min_x > max_y - min_y:  # TODO check which >< (see calculations)
             ax_order = ("x", "y")
-            offsets_1 = x_offsets
-            offsets_2 = y_offsets
+            offsets_1 = y_offsets
+            offsets_2 = x_offsets
         else:
             ax_order = ("y", "x")
             offsets_1 = y_offsets
@@ -207,15 +206,15 @@ def get_grid_subsets(
                 bounds = (
                     min_x,
                     min_y + off_ax_1,
-                    min_x + x_s,
-                    min_y + off_ax_1 + y_s,
+                    max_x,
+                    min_y + off_ax_1 + shape_size,
                 )
             elif ax_order == ("y", "x"):
                 bounds = (
                     min_x + off_ax_1,
                     min_y,
-                    min_x + off_ax_1 + x_s,
-                    min_y + y_s,
+                    min_x + off_ax_1,
+                    min_y + shape_size,
                 )
             profiling["translation"] += time.perf_counter() - start
 
@@ -238,15 +237,15 @@ def get_grid_subsets(
                     bounds = (
                         min_x + off_ax_2,
                         min_y + off_ax_1,
-                        min_x + off_ax_2 + x_s,
-                        min_y + off_ax_1 + y_s,
+                        min_x + off_ax_2 + shape_size,
+                        min_y + off_ax_1 + shape_size,
                     )
                 elif ax_order == ("y", "x"):
                     bounds = (
-                        min_x + off_ax_1,
-                        min_y + off_ax_2,
-                        min_x + off_ax_1 + x_s,
-                        min_y + off_ax_2 + y_s,
+                        min_x + off_ax_2,
+                        min_y + off_ax_1,
+                        min_x + off_ax_2 + shape_size,
+                        min_y + off_ax_1 + shape_size,
                     )
                 profiling["translation"] += time.perf_counter() - start
 
@@ -270,8 +269,7 @@ if __name__ == "__main__":
     POINTS = np.array([np.random.rand(N_P) * X_P, np.random.rand(N_P) * Y_P]).T
 
     # create shape (triangle)
-    X_S = 10
-    Y_S = 10
+    SHAPE_BBOX_SIZE = 10
 
     N_DX = 20
     N_DY = 20
@@ -283,18 +281,21 @@ if __name__ == "__main__":
             POINTS,
             N_DX,
             N_DY,
-            X_S,
-            Y_S,
-            use_subgrid=False,
+            SHAPE_BBOX_SIZE,
+            use_subgrid=True,
             pir_1="np",
             pir_2="np",
             profiling=profiling_results,
         )
     )
 
+    print(profiling_results)
+
     plt.ion()
     fig, ax = plt.subplots()
     ax.scatter(POINTS[:, 0], POINTS[:, 1], s=3)
+    ax.autoscale()
+    ax.axis("equal")
 
     subset_scatter = ax.scatter(subsets[0][:, 0], subsets[0][:, 1], s=3, c="red")
     for ss in subsets[1:]:
@@ -303,5 +304,3 @@ if __name__ == "__main__":
 
         fig.canvas.draw()
         fig.canvas.flush_events()
-
-        time.sleep(0.1)

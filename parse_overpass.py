@@ -98,6 +98,7 @@ def get_extents(o):
 
 def scale_polygon(point_set, polygon, size_factor=0.3):
     # TODO rewrite with outer bounding box because of rotation
+    # --> bbox is always quadratic --> sclaing is less complicated
     points_extents = get_extents(point_set)
     poly_extents = get_extents(polygon)
 
