@@ -2,7 +2,7 @@ from shapely import geometry as sply_geometry
 from scipy.spatial import KDTree
 import numpy as np
 import time
-from itertools import combinations
+from matplotlib import pyplot as plt
 
 
 ### helper ###
@@ -167,24 +167,25 @@ def get_grid_subsets(
 
     if not use_subgrid:
 
-        for x_off, y_off in combinations(x_offsets, y_offsets):
+        for x_off in x_offsets:
+            for y_off in y_offsets:
 
-            start = time.perf_counter()
-            rect = conversions_rect[pir_1](
-                (
-                    min_x + x_off,
-                    min_y + y_off,
-                    max_x + x_off + x_s,
-                    max_y + y_off + y_s,
+                start = time.perf_counter()
+                rect = conversions_rect[pir_1](
+                    (
+                        min_x + x_off,
+                        min_y + y_off,
+                        min_x + x_off + x_s,
+                        min_y + y_off + y_s,
+                    )
                 )
-            )
-            profiling["conversion_points"] += time.perf_counter() - start
+                profiling["conversion_points"] += time.perf_counter() - start
 
-            start = time.perf_counter()
-            final_subset = pir_1_func(points, rect)
-            profiling["pir_1"] += time.perf_counter() - start
+                start = time.perf_counter()
+                final_subset = pir_1_func(points, rect)
+                profiling["pir_1"] += time.perf_counter() - start
 
-            yield final_subset
+                yield final_subset
 
     else:
 
@@ -206,15 +207,15 @@ def get_grid_subsets(
                 bounds = (
                     min_x,
                     min_y + off_ax_1,
-                    max_x,
-                    max_y + off_ax_1 + y_s,
+                    min_x + x_s,
+                    min_y + off_ax_1 + y_s,
                 )
             elif ax_order == ("y", "x"):
                 bounds = (
                     min_x + off_ax_1,
                     min_y,
-                    max_x + off_ax_1 + x_s,
-                    max_y,
+                    min_x + off_ax_1 + x_s,
+                    min_y + y_s,
                 )
             profiling["translation"] += time.perf_counter() - start
 
@@ -237,15 +238,15 @@ def get_grid_subsets(
                     bounds = (
                         min_x + off_ax_2,
                         min_y + off_ax_1,
-                        max_x + off_ax_2 + x_s,
-                        max_y + off_ax_1 + y_s,
+                        min_x + off_ax_2 + x_s,
+                        min_y + off_ax_1 + y_s,
                     )
                 elif ax_order == ("y", "x"):
                     bounds = (
                         min_x + off_ax_1,
                         min_y + off_ax_2,
-                        max_x + off_ax_1 + x_s,
-                        max_y + off_ax_2 + y_s,
+                        min_x + off_ax_1 + x_s,
+                        min_y + off_ax_2 + y_s,
                     )
                 profiling["translation"] += time.perf_counter() - start
 
@@ -275,21 +276,32 @@ if __name__ == "__main__":
     N_DX = 20
     N_DY = 20
 
-    profiling = {}
+    profiling_results = {}
 
-    result = list(
+    subsets = list(
         get_grid_subsets(
             POINTS,
             N_DX,
             N_DY,
             X_S,
             Y_S,
-            use_subgrid=True,
+            use_subgrid=False,
             pir_1="np",
             pir_2="np",
-            profiling=profiling,
+            profiling=profiling_results,
         )
     )
-    print(len(result))
-    print([len(ss) for ss in result[:10]])
-    print(profiling)
+
+    plt.ion()
+    fig, ax = plt.subplots()
+    ax.scatter(POINTS[:, 0], POINTS[:, 1], s=3)
+
+    subset_scatter = ax.scatter(subsets[0][:, 0], subsets[0][:, 1], s=3, c="red")
+    for ss in subsets[1:]:
+        subset_scatter.remove()
+        subset_scatter = ax.scatter(ss[:, 0], ss[:, 1], s=3, c="red")
+
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+
+        time.sleep(0.1)
