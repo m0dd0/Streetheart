@@ -27,8 +27,10 @@ def bounds2poly(bounds):
 # the downside of loosing a common interface
 def get_pic_kdtree(tree, bounds):
     min_x, min_y, max_x, max_y = bounds
+    # assert max_x - min_x == max_y - min_y
     return tree.query_ball_point(
-        [min_x + 0.5 * (max_x - min_x), min_y + 0.5 * (max_y - min_y)]
+        [min_x + 0.5 * (max_x - min_x), min_y + 0.5 * (max_y - min_y)],
+        (max_x - min_x) * 0.5,
     )
 
 
@@ -127,8 +129,10 @@ def get_grid_subsets(
 
     # np: points_np --> points_np
     # sply: multipoints --> list[sply.points]
-    # kdtree: tree --> points_np
-    # kdtree_pic: tree -> points_np
+    # kdtree: tree --> list[points_np_index]
+    # kdtree_pic: tree --> list[points_np_index]
+
+    points_passed = points
 
     conversions_point_set = {
         (None, "np"): lambda points_np: points_np,
@@ -142,19 +146,19 @@ def get_grid_subsets(
         ("sply", "kdtree"): lambda sply_points: KDTree(
             np.array([(p.x, p.y) for p in sply_points])
         ),
-        ("kdtree", "np"): lambda points_np: points_np,
-        ("kdtree", "sply"): sply_geometry.MultiPoint,
-        ("kdtree", "kdtree"): KDTree,
-        ("np", None): lambda points_np: points_np,
-        ("scply", None): lambda sply_points: np.array(
-            [(p.x, p.y) for p in sply_points]
+        ("kdtree", "np"): lambda points_ind: points_passed[points_ind],
+        ("kdtree", "sply"): lambda points_ind: sply_geometry.MultiPoint(
+            points_passed[points_ind]
         ),
-        ("kdtree", None): lambda points_np: points_np,
+        ("kdtree", "kdtree"): lambda points_ind: KDTree(points_passed[points_ind]),
+        ("np", None): lambda points_np: points_np,
+        ("sply", None): lambda sply_points: np.array([(p.x, p.y) for p in sply_points]),
+        ("kdtree", None): lambda points_ind: points_passed[points_ind],
     }
 
     conversions_rect = {
         "np": lambda bounds: bounds,
-        "scply": lambda bounds: (bounds2poly,),
+        "sply": bounds2poly,
         "kdtree": lambda bounds: bounds,
     }
 
@@ -178,11 +182,15 @@ def get_grid_subsets(
                         min_y + y_off + shape_size,
                     )
                 )
-                profiling["conversion_points"] += time.perf_counter() - start
+                profiling["conversion_rect"] += time.perf_counter() - start
 
                 start = time.perf_counter()
                 final_subset = pir_1_func(points, rect)
                 profiling["pir_1"] += time.perf_counter() - start
+
+                start = time.perf_counter()
+                final_subset = conversions_point_set[(pir_1, None)](final_subset)
+                profiling["conversion_points"] += time.perf_counter() - start
 
                 yield final_subset
 
@@ -257,14 +265,22 @@ def get_grid_subsets(
                 final_subset = pir_2_func(subset_ax_1, rect)
                 profiling["pir_2"] += time.perf_counter() - start
 
+                start = time.perf_counter()
+                final_subset = conversions_point_set[(pir_2, None)](final_subset)
+                profiling["conversion_points"] += time.perf_counter() - start
+
                 yield final_subset
+
+
+def choice2d(a, n):
+    return a[np.random.randint(len(a), size=n)]
 
 
 if __name__ == "__main__":
 
     # create point set
-    X_P = 40
-    Y_P = 100
+    X_P = 100
+    Y_P = 40
     N_P = 10_000
     POINTS = np.array([np.random.rand(N_P) * X_P, np.random.rand(N_P) * Y_P]).T
 
@@ -273,34 +289,55 @@ if __name__ == "__main__":
 
     N_DX = 20
     N_DY = 20
+    N_DP = 36
+
+    N_APPROX = 20
 
     profiling_results = {}
 
+    start = time.perf_counter()
     subsets = list(
         get_grid_subsets(
             POINTS,
             N_DX,
             N_DY,
             SHAPE_BBOX_SIZE,
-            use_subgrid=True,
-            pir_1="np",
+            use_subgrid=False,
+            pir_1="kdtree_pic",
             pir_2="np",
             profiling=profiling_results,
         )
     )
+    print(time.perf_counter() - start)
+    # print(profiling_results)
 
-    print(profiling_results)
+    subsets_with_centers = zip(
+        subsets, [choice2d(ss, N_APPROX * N_DP) for ss in subsets]
+    )
 
-    plt.ion()
-    fig, ax = plt.subplots()
-    ax.scatter(POINTS[:, 0], POINTS[:, 1], s=3)
-    ax.autoscale()
-    ax.axis("equal")
+    # start = time.perf_counter()
+    # for ss, centers in subsets_with_centers:
+    #     tree = KDTree(ss)
+    #     for c in centers:
+    #         tree.query_ball_point(c, 1)
+    # print(time.perf_counter() - start)
 
-    subset_scatter = ax.scatter(subsets[0][:, 0], subsets[0][:, 1], s=3, c="red")
-    for ss in subsets[1:]:
-        subset_scatter.remove()
-        subset_scatter = ax.scatter(ss[:, 0], ss[:, 1], s=3, c="red")
+    start = time.perf_counter()
+    for ss, centers in subsets_with_centers:
+        for c in centers:
+            get_pir_np(ss, (c[0] - 0.5, c[1] - 0.5, c[0] + 0.5, c[1] + 0.5))
+    print(time.perf_counter() - start)
 
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+    # plt.ion()
+    # fig, ax = plt.subplots()
+    # ax.scatter(POINTS[:, 0], POINTS[:, 1], s=3)
+    # ax.autoscale()
+    # ax.axis("equal")
+
+    # subset_scatter = ax.scatter(subsets[0][:, 0], subsets[0][:, 1], s=3, c="red")
+    # for ss in subsets[1:]:
+    #     subset_scatter.remove()
+    #     subset_scatter = ax.scatter(ss[:, 0], ss[:, 1], s=3, c="red")
+
+    #     fig.canvas.draw()
+    #     fig.canvas.flush_events()
