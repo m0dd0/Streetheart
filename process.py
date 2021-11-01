@@ -10,6 +10,26 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 
+def _poly_length(line):
+    return np.sum(np.linalg.norm(np.diff(np.append(line, line[0]), axis=0), axis=1))
+
+
+def _create_rotation_matrix(a):
+    a = a * np.pi / 180
+    return np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
+
+
+def _rotate_around_point(points, center, phi):
+    return (points - center) @ _create_rotation_matrix(phi) + center
+
+
+def _bbox_center(points):
+    x_extent, y_extent = np.ptp(points, axis=0)
+    return np.array(
+        [points[:, 0].min() + x_extent * 0.5, points[:, 1].min() + y_extent * 0.5]
+    )
+
+
 def split_osm_data(osm_data):
     """[summary]
 
@@ -83,8 +103,11 @@ def query_transform_shape(
     point_set,
     relative_shape_size,
     shape_circle_diameter_factor,
-    shape_circle_overlap,
+    shape_circle_relative_distance,
 ):
+    if shape[0] != shape[-1]:
+        shape = np.append(shape, shape[0])
+
     shape = shape - np.min(shape, axis=0)
     shape = (
         shape
@@ -95,33 +118,11 @@ def query_transform_shape(
     shape = shape + np.min(point_set, axis=0)
 
     shape_circle_diameter = np.ptp(shape, axis=0).max() * shape_circle_diameter_factor
-    distances = np.linalg.norm(np.diff(shape + shap, axis=0), axis=1)
+    shape_circle_distance = shape_circle_relative_distance * shape_circle_diameter
 
-    shape_length = _poly_length(shape)
-
-    shape = resample_line(shape, shape_circle_overlap * shape_circle_diameter)
+    shape = resample_line(shape, shape_circle_distance)
 
     return shape
-
-
-def _poly_length(line):
-    return np.sum(np.linalg.norm(np.diff(np.append(line, line[0]), axis=0), axis=1))
-
-
-def _create_rotation_matrix(a):
-    a = a * np.pi / 180
-    return np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
-
-
-def _rotate_around_point(points, center, phi):
-    return (points - center) @ _create_rotation_matrix(phi) + center
-
-
-def _bbox_center(points):
-    x_extent, y_extent = np.ptp(points, axis=0)
-    return np.array(
-        [points[:, 0].min() + x_extent * 0.5, points[:, 1].min() + y_extent * 0.5]
-    )
 
 
 def get_centers(point_set, shape_relative_size, n_x, n_y):
@@ -140,45 +141,14 @@ def get_centers(point_set, shape_relative_size, n_x, n_y):
     return centers
 
 
-def get_centers_and_rotations(
-    shape_points_orig, point_set, shape_relative_size, n_x=10, n_y=10, n_phi=10
-):
-    # put the shape on the botton left corner of the point set
-    shape_points_initial = _get_inital_shape(
-        shape_points_orig, point_set, shape_relative_size
-    )
-
-    # rotate the shape at this position
-    shape_center = _bbox_center(shape_points_initial)
+def get_rotations(shape, n_phi):
+    shape_center = _bbox_center(shape)
     rotated_shapes = [
-        _rotate_around_point(shape_points_initial, shape_center, phi)
+        _rotate_around_point(shape, shape_center, phi)
         for phi in np.linspace(0, 359, n_phi)
     ]
 
-    x_extent_shape, y_extent_shape = np.ptp(shape_points_initial, axis=0)
-    min_x = point_set[:, 0].min() + x_extent_shape * 0.5
-    max_x = point_set[:, 0].max() - x_extent_shape * 0.5
-    min_y = point_set[:, 1].min() + y_extent_shape * 0.5
-    max_y = point_set[:, 1].max() - y_extent_shape * 0.5
-    xs = np.linspace(min_x, max_x, n_x)
-    ys = np.linspace(min_y, max_y, n_y)
-    centers = np.array(np.meshgrid(xs, ys)).T.reshape(-1, 2)
-
-    return centers, rotated_shapes
-    # list of (center, rotated shape tuples)
-    # using np.meshgrid wont work directly since the elements to build the product
-    # from are not 1d
-    # c_r_combs = np.array(list(product(centers, rotated_shapes)))
-    # query_point_sets = c_r_combs[:, 1] + c_r_combs[:, 0]
-
-    # query_point_sets = []
-    # for c in centers:
-    #     for shape_points in rotated_shapes:
-    #         for p in shape_points:
-
-    #         query_point_sets.append(shape_points + c)
-
-    # return query_point_sets
+    return rotated_shapes
 
 
 if __name__ == "__main__":
@@ -200,8 +170,31 @@ if __name__ == "__main__":
     )
 
     shape = [(0, 0), (1, 1), (2, 0)]  # triangle
-    shape_circle_diameter = np.ptp(shape, axis=0).max() * SHAPE_CIRCLE_DIAMETER_FACTOR
-    n_shape_queries = f(shape_circle_diameter, SHAPE_CIRCLE_OVERLAP, shape_length)
+    SHAPE_RELATIVE_SIZE = 0.2
+    SHAPE_CIRCLE_DIAMETER_FACTOR = 0.05
+    SHAPE_CIRCLE_RELATIVE_DIST = 0.5
+    shape = query_transform_shape(
+        shape,
+        nodes_resampled,
+        SHAPE_RELATIVE_SIZE,
+        SHAPE_CIRCLE_DIAMETER_FACTOR,
+        SHAPE_CIRCLE_RELATIVE_DIST,
+    )
+
+    centers = 
+
+    # list of (center, rotated shape tuples)
+    # using np.meshgrid wont work directly since the elements to build the product
+    # from are not 1d
+    # c_r_combs = np.array(list(product(centers, rotated_shapes)))
+    # query_point_sets = c_r_combs[:, 1] + c_r_combs[:, 0]
+
+    # query_point_sets = []
+    # for c in centers:
+    #     for shape_points in rotated_shapes:
+    #         for p in shape_points:
+
+    #         query_point_sets.append(shape_points + c)
 
     # fig, ax = plt.subplots()
     # ax.add_collection(mpl.collections.LineCollection(streets))
