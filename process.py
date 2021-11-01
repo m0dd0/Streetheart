@@ -8,6 +8,7 @@ from numpy.lib import meshgrid
 from shapely import geometry as sply_geometry
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from scipy.spatial import KDTree
 
 
 def _poly_length(line):
@@ -98,16 +99,11 @@ def resample_line(line, delta):
     return np.array(resampled_line)
 
 
-def query_transform_shape(
+def shape_to_initial_position(
     shape,
     point_set,
     relative_shape_size,
-    shape_circle_diameter_factor,
-    shape_circle_relative_distance,
 ):
-    if shape[0] != shape[-1]:
-        shape = np.append(shape, shape[0])
-
     shape = shape - np.min(shape, axis=0)
     shape = (
         shape
@@ -117,10 +113,24 @@ def query_transform_shape(
     )
     shape = shape + np.min(point_set, axis=0)
 
-    shape_circle_diameter = np.ptp(shape, axis=0).max() * shape_circle_diameter_factor
-    shape_circle_distance = shape_circle_relative_distance * shape_circle_diameter
+    return shape
 
-    shape = resample_line(shape, shape_circle_distance)
+
+def get_query_circle_diameter(shape, query_circle_diameter_factor):
+    return np.ptp(shape, axis=0).max() * query_circle_diameter_factor
+
+
+def resample_shape(
+    shape,
+    query_circle_diameter,
+    query_circle_relative_distance,
+):
+    query_circle_distance = query_circle_relative_distance * query_circle_diameter
+
+    if np.linalg.norm(shape[0] - shape[-1]) > query_circle_distance:
+        shape = np.append(shape, [shape[0]], axis=0)
+
+    shape = resample_line(shape, query_circle_distance)
 
     return shape
 
@@ -169,20 +179,50 @@ if __name__ == "__main__":
         np.array([p for s in streets_resampled for p in s]), axis=0
     )
 
-    shape = [(0, 0), (1, 1), (2, 0)]  # triangle
-    SHAPE_RELATIVE_SIZE = 0.2
-    SHAPE_CIRCLE_DIAMETER_FACTOR = 0.05
-    SHAPE_CIRCLE_RELATIVE_DIST = 0.5
-    shape = query_transform_shape(
-        shape,
-        nodes_resampled,
-        SHAPE_RELATIVE_SIZE,
-        SHAPE_CIRCLE_DIAMETER_FACTOR,
-        SHAPE_CIRCLE_RELATIVE_DIST,
+    shape = [(1, 1), (2, 2), (3, 1)]  # triangle
+    SHAPE_RELATIVE_SIZE = 0.3
+    shape = shape_to_initial_position(shape, nodes_resampled, SHAPE_RELATIVE_SIZE)
+    # TODO calculate circle properties from given corridor width
+    QUERY_CIRCLE_DIAMETER_FACTOR = 0.2
+    query_circle_diameter = get_query_circle_diameter(
+        shape, QUERY_CIRCLE_DIAMETER_FACTOR
     )
+    QUERY_CIRCLE_RELATIVE_DIST = 0.8
+    shape = resample_shape(shape, query_circle_diameter, QUERY_CIRCLE_RELATIVE_DIST)
 
-    centers = 
+    N_X = 20
+    N_Y = 20
+    N_PHI = 20
+    centers = get_centers(nodes_resampled, SHAPE_RELATIVE_SIZE, N_X, N_Y)
+    shape_rotations = get_rotations(shape, N_PHI)
 
+    fig, ax = plt.subplots()
+    ax.add_collection(mpl.collections.LineCollection(streets))
+    ax.scatter(nodes_resampled[:, 0], nodes_resampled[:, 1], s=10, c="red")
+    ax.scatter(shape[:, 0], shape[:, 1], s=10, c="green")
+    ax.scatter(centers[:, 0], centers[:, 1], s=10, c="green")
+    for c in shape:
+        ax.add_artist(
+            plt.Circle(c, query_circle_diameter / 2, color="green", fill=False)
+        )
+    ax.autoscale()
+    ax.set_aspect("equal")
+    plt.show()
+
+    start = time.perf_counter()
+    tree = KDTree(nodes_resampled)
+    possible_routes = []
+    for c in centers:
+        for points in shape_rotations:
+            points = points + c
+            for p in points:
+                contained_nodes = tree.query_ball_point(p, query_circle_diameter)
+                print(len(contained_nodes))
+                if len(contained_nodes) == 0:
+                    break
+                possible_routes.append(points)
+    print(len(possible_routes))
+    print(time.perf_counter() - start)
     # list of (center, rotated shape tuples)
     # using np.meshgrid wont work directly since the elements to build the product
     # from are not 1d
@@ -195,15 +235,6 @@ if __name__ == "__main__":
     #         for p in shape_points:
 
     #         query_point_sets.append(shape_points + c)
-
-    # fig, ax = plt.subplots()
-    # ax.add_collection(mpl.collections.LineCollection(streets))
-    # ax.scatter(nodes_resampled[:, 0], nodes_resampled[:, 1], s=10, c="red")
-    # # ax.scatter(shape[:, 0], shape[:, 1], s=10, c="red")
-    # ax.scatter(centers[:, 0], centers[:, 1], s=10, c="green")
-    # ax.autoscale()
-    # ax.set_aspect("equal")
-    # plt.show()
 
     # it is incredibly fast to query even very large point sets with a kdtree
     # therefore no subbox approach is used
